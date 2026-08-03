@@ -5,6 +5,22 @@ All notable changes to the `zipic` skill are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 Versioning follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
+## [2.1.0] — 2026-08-03
+
+### Added
+- **Overwrite / source-deletion contract**, the headline of this release. Documented what `overwrite` actually means (format conversion + same path stem → source file deleted, inherited from the active preset whose GUI default is ON) and added agent safety rules to SKILL.md: pass `--no-overwrite` (CLI ≥ 0.2.0) or route output to a separate `--output` dir (safe on all versions) whenever the user didn't ask to replace sources.
+- CLI 0.2.0 coverage in `reference/cli.md`, with per-flag version gating against 0.1.0:
+  - Full boolean pairs `--no-overwrite`, `--no-progressive`, `--no-keep-hierarchy`, plus explicit `--<flag>=true|false` forms for every pair.
+  - `--keep-hierarchy`, `--tiff-compression`, `--autocopy` flagged as **silently dead on 0.1.0**, working on 0.2.0 (`--autocopy` now documents the take-over-from-GUI-global + aggregate clipboard semantics).
+  - `--suffix` / `--subfolder` imply enabling their toggle on 0.2.0 (silent no-op on 0.1.0 when the inherited toggle is off).
+  - `data.option` echo in the compress success response; `data.plan.option.overwrite` called out for dry-run verification.
+  - `preset set-default` implemented (selects the *active* preset — the flag-less compress baseline); still `not_implemented` on 0.1.0.
+  - `--scale` added to the compress and `preset create` flag tables; `preset create` flag list expanded with the boolean pairs.
+
+### Fixed
+- Socket path in `reference/cli.md` was wrong: `~/Library/Application Support/zipic/cli.sock` → `~/Library/Application Support/studio.5km.zipic/cli.sock`.
+- Wrong "Default" column entries for `--overwrite`, `--progressive`, `--keep-hierarchy` (documented as fixed `off` — they are all inherited from the active preset / current settings; there are no fixed CLI defaults).
+
 ## [2.0.0] — 2026-05-08
 
 ### Added

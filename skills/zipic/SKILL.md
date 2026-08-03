@@ -9,7 +9,7 @@ description: |
 license: MIT
 compatibility: macOS only. Requires Zipic.app >= 1.9.5 for CLI; >= 1.9.0 for SVG via URL Scheme.
 metadata:
-  version: 2.0.0
+  version: 2.1.0
   author: 十里 & FRIDAY
   homepage: https://zipic.app
   changelog: ./CHANGELOG.md
@@ -35,7 +35,10 @@ zipic compress --json [flags] <files-or-dirs>...
 | Custom output directory    | `--output /tmp/out/` (auto-sets `--location custom`) |
 | Mirror source tree         | `--keep-hierarchy` |
 | Use a saved preset         | `--preset "Web 1x"` (explicit flags override) |
+| Keep sources on conversion | `--no-overwrite` (CLI ≥ 0.2.0) or `--output <dir>` (any version) |
 | Preview without running    | `--dry-run` |
+
+**Source-deletion warning**: flags you don't pass inherit from the user's *active preset*, and `overwrite` (GUI default ON) means a format conversion landing next to the source with the same base name **deletes the source file**. When the user didn't ask to replace sources: pass `--no-overwrite` (CLI ≥ 0.2.0, check `zipic --version`), or write to a separate `--output` dir — safe on every version. `--dry-run --json` echoes the effective value at `data.plan.option.overwrite`. On CLI 0.1.0 there is no reliable off switch (`--no-overwrite` is unknown and swallows the next argument) — use the `--output` route. Full contract: `reference/cli.md`.
 
 ```bash
 # Convert + resize + custom output
@@ -74,7 +77,7 @@ Only when `route` is `install_cli` or `url_scheme`. URL Scheme is fire-and-forge
 ## SVG and presets quick notes
 
 - **SVG optimization** (Pro, Zipic ≥ 1.9.0): pass `.svg` files like any other input. Output stays SVG — never set `--format` on SVG. Level 1–2 conservative, 3–4 balanced, 5–6 may simplify paths visibly.
-- **Presets** (CLI only): `zipic preset list --json`, `zipic preset show "<name>" --json`, `zipic preset create --name "Web 2x" --level 3 --format webp --width 2400`. Free users may keep at most 1 custom preset.
+- **Presets** (CLI only): `zipic preset list --json`, `zipic preset show "<name>" --json`, `zipic preset create --name "Web 2x" --level 3 --format webp --width 2400`. `zipic preset set-default "<name>"` (CLI ≥ 0.2.0) selects the active preset — the baseline a flag-less `compress` inherits. Free users may keep at most 1 custom preset.
 - **History** (CLI only): `zipic list --json --limit 20` / `zipic list clear`.
 
 ## Zipic-usage questions

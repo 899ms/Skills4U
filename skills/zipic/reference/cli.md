@@ -1,6 +1,13 @@
 # Zipic CLI Reference
 
-Ground-truth spec for the `zipic` binary shipped with Zipic.app >= 1.9.5. The CLI talks to the running GUI over a UDS socket at `~/Library/Application Support/zipic/cli.sock` and returns line-delimited JSON. If the GUI isn't running, the CLI auto-launches it and waits up to 8 s for the socket to bind.
+Ground-truth spec for the `zipic` binary shipped with Zipic.app >= 1.9.5. The CLI talks to the running GUI over a UDS socket at `~/Library/Application Support/studio.5km.zipic/cli.sock` and returns line-delimited JSON. If the GUI isn't running, the CLI auto-launches it and waits up to 8 s for the socket to bind.
+
+Two CLI generations are in the field — check `zipic --version`:
+
+- **0.1.0** (Zipic 1.9.5): baseline. `--overwrite` is one-way (no off switch), `--keep-hierarchy` / `--tiff-compression` / `--autocopy` are accepted but **silently dead**, `--<flag>=false` forms are silently dropped, and `preset set-default` returns `not_implemented`.
+- **0.2.0** (later Zipic builds): full boolean pairs (`--no-overwrite`, `--no-progressive`, `--no-keep-hierarchy`) plus explicit `--<flag>=true|false` forms, the three dead flags actually work, invalid values exit 64 instead of being ignored, compress responses echo the resolved option, and `preset set-default` works.
+
+Flags marked "0.2.0" below require the newer CLI.
 
 Install path: `/usr/local/bin/zipic` (symlink into `Zipic.app/Contents/Resources/zipic`). Installed via Zipic menu bar → "Install zipic CLI" (one-time admin password prompt).
 
@@ -18,7 +25,7 @@ zipic --help    | -h
 | ------------ | ------------------------------------------------------ |
 | `--json`     | Emit a single JSON line on stdout. Required for AI use. |
 | `--dry-run`  | (compress only) Return the resolved plan, no work done. |
-| `--version`  | Print CLI version (e.g. `zipic 0.1.0`) and exit.        |
+| `--version`  | Print CLI version (e.g. `zipic 0.2.0`) and exit.        |
 | `--help`     | Print built-in help and exit.                           |
 
 ## Exit codes
@@ -40,27 +47,51 @@ Positional args are files or directories. Directories are walked recursively for
 
 ### compress flags
 
+Every flag not given on the command line **inherits** from `--preset`, or, without it, from the GUI's currently *active* preset / current settings. There are no fixed CLI defaults. Boolean pairs also accept the explicit form `--<flag>=true|false` (0.2.0; on 0.1.0 the `=false` form is silently dropped — never rely on it there).
+
 | Flag                                              | Type                                       | Default          | Notes |
 | ------------------------------------------------- | ------------------------------------------ | ---------------- | ----- |
-| `--level <1-6>`                                   | int 1–6                                    | from current setting / preset | 1 = best quality, 6 = smallest. |
+| `--level <1-6>`                                   | int 1–6                                    | inherited        | 1 = best quality, 6 = smallest. |
 | `--format <value>`                                | `original\|jpeg\|png\|webp\|avif\|heic\|jxl` | inherited       | `avif` and `jxl` are Pro-only output formats; gated server-side. SVG is **not** an output value (SVG inputs stay SVG). |
-| `--width <px>`                                    | int                                        | 0 (auto)         | 0 = no resize on this axis. |
-| `--height <px>`                                   | int                                        | 0 (auto)         | 0 = no resize on this axis. |
+| `--width <px>`                                    | int                                        | 0 (auto)         | 0 = no resize on this axis. Invalid values exit 64 on 0.2.0 (silently ignored on 0.1.0). |
+| `--height <px>`                                   | int                                        | 0 (auto)         | Same as `--width`. |
+| `--scale <1-99>`                                  | int                                        | —                | Percentage resize; overrides `--width`/`--height`. |
 | `--keep-aspect` / `--no-keep-aspect`              | bool                                       | keep             | Lock aspect ratio when one axis is set. |
-| `--preserve-metadata` / `--no-metadata`           | bool                                       | inherited        | EXIF/ICC retention. |
-| `--progressive`                                   | bool                                       | off              | Progressive JPEG. |
-| `--tiff-compression <lzw\|zip>`                   | enum                                       | inherited        | TIFF output codec. |
+| `--preserve-metadata` / `--no-metadata`           | bool                                       | inherited        | EXIF/ICC retention. `--no-metadata` is Pro-only. |
+| `--progressive` / `--no-progressive`              | bool                                       | inherited        | Progressive JPEG. `--no-progressive` needs 0.2.0. |
+| `--tiff-compression <lzw\|zip>`                   | enum                                       | inherited        | TIFF output codec. **Dead on 0.1.0**; works on 0.2.0. |
 | `--location <original\|custom>`                   | enum                                       | inherited        | `original` = save next to input; `custom` = `--output`. Auto-set to `custom` if `--output` is given without explicit `--location`. |
 | `--output <dir>`                                  | path                                       | —                | Output directory. Forces `--location custom` when set. |
-| `--suffix <text>`                                 | string                                     | inherited        | Filename suffix. |
+| `--suffix <text>`                                 | string                                     | inherited        | Filename suffix. Implies `--add-suffix` on 0.2.0 (on 0.1.0 it silently does nothing when the inherited toggle is off). |
 | `--add-suffix` / `--no-suffix`                    | bool                                       | inherited        | Toggle suffix usage. |
-| `--subfolder <name>`                              | string                                     | inherited        | Output subfolder under destination. |
+| `--subfolder <name>`                              | string                                     | inherited        | Output subfolder under destination. Implies `--add-subfolder` on 0.2.0. |
 | `--add-subfolder` / `--no-subfolder`              | bool                                       | inherited        | Toggle subfolder usage. |
-| `--keep-hierarchy`                                | bool                                       | off              | Mirror the source directory tree under `--output`. |
-| `--overwrite`                                     | bool                                       | off              | Replace existing output files. |
-| `--autocopy <off\|path\|file\|markdown>`          | enum                                       | `off`            | After compression, copy to clipboard as `path` / `file` / `markdown` snippet. |
+| `--keep-hierarchy` / `--no-keep-hierarchy`        | bool                                       | inherited        | Mirror the source directory tree under `--output`. **Dead on 0.1.0**; works on 0.2.0. |
+| `--overwrite` / `--no-overwrite`                  | bool                                       | inherited        | Replace-the-source on format conversion — see the contract below. `--no-overwrite` needs 0.2.0. |
+| `--autocopy <off\|path\|file\|markdown>`          | enum                                       | inherit GUI global | **Dead on 0.1.0.** On 0.2.0 an explicit value takes over from the GUI's per-file autocopy: `off` suppresses clipboard writes, the others write one aggregate entry after the run (`path` = newline-joined paths, `file` = file objects, `markdown` = `![](path)` lines). |
 | `--preset <name-or-id>`                           | string                                     | —                | Use a saved preset as base; explicit flags override its values. UUID match wins; falls back to name; "default" matches the seeded default preset regardless of locale. |
 | `--dry-run`                                       | bool                                       | off              | Returns `data.plan` without compressing. |
+
+### Overwrite / source-deletion contract
+
+`overwrite` does **not** mean "replace existing output files". It means: on a
+**format conversion** whose output lands at the **same path stem** as the source
+(same directory, same base name — i.e. no suffix, no subfolder,
+`location=original`), Zipic writes the converted file and **deletes the source**.
+Example: `zipic compress photo.png --format webp --no-suffix --no-subfolder`
+with overwrite in effect writes `photo.webp` and removes `photo.png`.
+
+Because the value is inherited from the user's active preset (GUI default is
+ON), an agent must never assume it is off. Safety rules:
+
+- User didn't ask to replace sources → pass `--no-overwrite` (0.2.0), or use
+  `--output <separate-dir>` — a different directory never triggers deletion and
+  is safe on every CLI version.
+- On CLI 0.1.0 there is **no reliable off switch** (`--no-overwrite` is unknown
+  there and swallows the next argument; `--overwrite=false` is silently
+  dropped) — use the `--output` route.
+- Verify with `--dry-run --json` → `data.plan.option.overwrite`; a real run
+  echoes the same via `data.option.overwrite` (0.2.0).
 
 ### compress JSON response
 
@@ -86,10 +117,15 @@ Success (after a real run):
       }
     ],
     "completed_count": 1,
-    "total_urls": 1
+    "total_urls": 1,
+    "option": { "level": 3, "output_format": "webp", "overwrite": false,
+                "add_suffix": true, "suffix": "-min", "...": "..." }
   }
 }
 ```
+
+`data.option` (0.2.0) echoes the fully resolved option the run actually used —
+check `option.overwrite` to know whether a conversion deleted its sources.
 
 `state` values:
 - `success` — compressed, output file written.
@@ -126,11 +162,11 @@ zipic preset <subcommand> [args]
 | `delete <name-or-id>`                                   | Delete a custom preset (default cannot be deleted — returns `not_allowed`). |
 | `duplicate <name-or-id>`                                | Clone an existing preset.                       |
 | `set-favorite <name-or-id> [--off]`                     | Toggle favorite flag; `--off` forces unfavorite. |
-| `set-default <name-or-id>`                              | **Declared but not implemented in 1.9.5** — returns `not_implemented`. |
+| `set-default <name-or-id>`                              | Select the *active* preset — the baseline a flag-less `compress` inherits. Does not move the seeded `is_default` badge. Returns `not_implemented` on Zipic 1.9.5 (CLI 0.1.0). |
 | `import <file>`                                         | Import preset JSON; auto-renames on name collision (`<name> (Imported)`, `(Imported 2)`, …). |
 | `export <name-or-id> --output <file>`                   | Export to JSON.                                 |
 
-`create` accepts the same `--level/--format/--width/--height/--suffix/--subfolder/--output/--location/--keep-aspect/--preserve-metadata/--overwrite/--progressive` flags as `compress` (they're baked into the preset).
+`create` accepts the same `--level/--format/--width/--height/--scale/--suffix/--subfolder/--output/--location` flags as `compress`, plus the boolean pairs `--keep-aspect/--no-keep-aspect`, `--preserve-metadata/--no-metadata`, `--overwrite/--no-overwrite`, `--progressive/--no-progressive`, `--add-suffix/--no-suffix`, `--add-subfolder/--no-subfolder` (negative forms need 0.2.0). They're baked into the preset; unspecified values inherit from the GUI's current settings.
 
 ### preset JSON response
 
@@ -195,7 +231,7 @@ Common `error.code` values:
 | `invalid_arguments` | Missing/invalid argument. Exit 64.                |
 | `not_found`         | Preset / file not found. Exit 1.                  |
 | `not_allowed`       | E.g. trying to delete the default preset. Exit 1. |
-| `not_implemented`   | E.g. `preset set-default` in 1.9.5. Exit 1.       |
+| `not_implemented`   | E.g. `preset set-default` on Zipic 1.9.5 (CLI 0.1.0). Exit 1. |
 | `internal_error`    | Unexpected. Exit 1.                               |
 | `gui_not_running`   | Auto-launch failed. Exit 65.                      |
 | `io_error`          | Socket / IO problem. Exit 1.                      |
