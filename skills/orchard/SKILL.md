@@ -2,7 +2,7 @@
 name: orchard
 description: "Use the local Orchard app to interact with macOS Apple apps and services: Calendar, Reminders, Clock, Mail, Contacts, Notes, Music, Weather, Messages, Location/Maps, and Apple Shortcuts. Two execution paths reach the same running Orchard.app: the `orchard` CLI (default — use this if you have a Bash/shell tool, e.g. Claude Code, Codex CLI, Cursor) and a stdio MCP server, `orchard mcp`, exposed as prefixed MCP tools (fallback for sandboxes that cannot run the macOS CLI, e.g. Claude Cowork, bridged through Claude Desktop). Use when a task asks to read or manage local calendar events, reminders, Apple Mail, contacts, notes, iMessage/SMS, Apple Music playback/library, weather, current time/timezones, geocoding, routes, current location, or local Shortcuts."
 metadata:
-  version: "0.7.2"
+  version: "0.7.3"
   updated: "2026-08-07"
   tested_with:
     orchard_app: "0.6.2 (17)"
@@ -151,7 +151,9 @@ Prefer `shortcuts list --summary` before running. Use `--input-path` and `--outp
 ## Troubleshooting (CLI)
 
 - If a command asks for macOS privacy permissions, tell the user which app/service needs permission and retry after permission is granted.
-- If a command returns `Orchard.app is not running`, start `"$ORCHARD_APP_PATH"` when it is non-empty; otherwise run `open -a Orchard`. Wait a few seconds, then retry once with the same `ORCHARD_BIN`. (On the MCP channel this retry happens automatically — see `references/mcp-tools.md`.)
+- You normally never see `Orchard.app is not running`: CLI 0.6.2+ auto-launches the app on demand (`open -b tech.5km.orchard`, polls up to ~10s, retries once — both channels share this). If a command reports the app could not be started or did not become ready, or an older CLI still returns the plain "not running" error, start `"$ORCHARD_APP_PATH"` when it is non-empty (otherwise `open -a Orchard`), wait a few seconds, then retry once with the same `ORCHARD_BIN`. Set `ORCHARD_NO_AUTOLAUNCH=1` only when a script needs a fast, definitive failure instead of the launch wait.
+- For persistent or confusing failures, run `"$ORCHARD_BIN" doctor` — read-only diagnostics covering the socket, the CLI symlink, Skill installs, MCP config entries, and CLI/app version drift (exits 1 when something fails). `"$ORCHARD_BIN" status --json` reports login/Pro state, per-feature switches, and macOS permission status in one call; neither command launches the app.
+- If a tool errors with "'X' is currently disabled", the switch can be flipped with `"$ORCHARD_BIN" features enable <feature>` — ask the user before changing their settings. Pro-tier features still require a Pro subscription; the server enforces this either way.
 - If a command returns `Invalid response from Orchard.app`, treat it as an Orchard.app bridge/permission/runtime issue, not necessarily a CLI syntax issue. Retry once, then ask the user to check that Orchard.app is running and has the relevant macOS privacy permissions.
 - If Apple Mail, Calendar, or Reminders data looks stale, run the relevant refresh/list command again and state the timestamp of the scan.
 - If `--json` output contains a long HTML email body, summarize only the relevant parts; do not paste the entire body.

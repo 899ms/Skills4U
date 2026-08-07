@@ -41,7 +41,6 @@ Typical flow: `calendar_info` (type=calendars) to get a `calendar_id` → `calen
 ### `calendar_info` — list calendars or events
 - **Required:** `type` (`"calendars"` | `"events"`)
 - **Optional:** `calendar_type` (`"event"` | `"birthday"`, only used when `type=calendars`, default `"event"`) · `start_date`, `end_date` (ISO 8601 — required in practice when `type=events`, just not schema-enforced) · `calendar_ids` (array of calendar-ID strings, filters `type=events`)
-- **Gotcha:** `calendar_ids` filtering has no CLI equivalent — it's only reachable on this channel.
 
 ### `calendar_event_create` — create an event
 - **Required:** `title`, `start_date`, `end_date` (ISO 8601, e.g. `"2026-06-03T15:00:00+08:00"`; include a timezone offset for local time)
@@ -70,7 +69,6 @@ Typical flow: `reminder_info` (type=lists) to get a `list_id` → `reminder_crea
 ### `reminder_info` — list reminder lists or reminders
 - **Required:** `type` (`"lists"` | `"reminders"`)
 - **Optional:** `list_id` (filter, `type=reminders`) · `completed` (**boolean**, filter — omit for all, `true` for completed only, `false` for incomplete only; this is not a `"status"` string enum) · `due_from`, `due_to` (ISO 8601, filter due-date range)
-- **Gotcha:** `due_from`/`due_to` range filtering has no CLI equivalent — MCP-only.
 
 ### `reminder_create` — create a reminder
 - **Required:** `title`
@@ -130,8 +128,8 @@ Typical flow: `mail_accounts` to find a valid `from_account` → `mail_read` (ty
 - **Optional:** `status` (`"pending"` | `"sent"` | `"cancelled"` | `"all"`, default all)
 
 ### `mail_scheduled_cancel` — cancel/delete scheduled emails
-- **Optional:** `email_id` (single) · `email_ids` (array, **batch** — MCP-only, the CLI only supports one `--id` at a time) · `status` (deletes **every** email with this status — MCP-only bulk op, no CLI equivalent)
-- **Gotcha:** no field is schema-required, but you must supply at least one of the three. Treat `status`-wide delete as destructive; confirm with the user before using it.
+- **Optional:** `email_id` (single) · `email_ids` (array, **batch** — CLI: comma-separated `--ids`) · `status` (deletes **every** email with this status — CLI: `--status`)
+- **Gotcha:** exactly one of the three is required — the server rejects calls without a filter (and rejects `email_ids` + `status` together). Treat `status`-wide delete as destructive; confirm with the user before using it.
 
 ---
 
@@ -179,8 +177,8 @@ Typical flow: `messages_read` (type=chats) to get a `chat_identifier` → `messa
 - **Optional:** `status` (default all)
 
 ### `messages_scheduled_cancel` — cancel/delete scheduled messages
-- **Optional:** `message_id` (single) · `message_ids` (array, batch — MCP-only) · `status` (bulk delete — MCP-only)
-- **Gotcha:** same caution as `mail_scheduled_cancel` — confirm before status-wide delete.
+- **Optional:** `message_id` (single) · `message_ids` (array, batch — CLI: comma-separated `--ids`) · `status` (bulk delete — CLI: `--status`)
+- **Gotcha:** same caution as `mail_scheduled_cancel` — exactly one filter required (server-enforced); confirm before status-wide delete.
 
 ---
 
@@ -275,11 +273,11 @@ Tool prefix is `location_*` for every tool in this CLI domain (`orchard location
 
 ### `location_search` — search places
 - **Required:** `type` (`"search"` | `"nearby"` | `"autocomplete"`), `query` (search term, or a category like `"restaurant"` for nearby)
-- **Optional:** `latitude`, `longitude` (required for `nearby`; optional bias hint otherwise) · `radius` (meters, default 10000 for search / 5000 for nearby — **MCP-only, no CLI flag**) · `limit` (default 10, max 50/search, 30/nearby, 10/autocomplete — **MCP-only, no CLI flag**)
+- **Optional:** `latitude`, `longitude` (required for `nearby`; optional bias hint otherwise) · `radius` (meters, default 10000 for search / 5000 for nearby) · `limit` (default 10, max 50/search, 30/nearby, 10/autocomplete)
 
 ### `location_geocode` — address ↔ coordinates
 - **Required:** `direction` (`"address_to_coords"` | `"coords_to_address"`)
-- **Optional:** `address` (required in practice for `address_to_coords`) · `latitude`, `longitude` (required in practice for `coords_to_address`) · `region` (country/region bias code, e.g. `"US"`, `"CN"` — **MCP-only, no CLI flag**)
+- **Optional:** `address` (required in practice for `address_to_coords`) · `latitude`, `longitude` (required in practice for `coords_to_address`) · `region` (country/region bias code, e.g. `"US"`, `"CN"`)
 
 ### `location_route` — route or straight-line distance
 - **Optional:** `origin`, `destination` (address or `"lat,lon"` string — required unless `straight_line_only`) · `transport_type` (**enum `"automobile"` | `"walking"` | `"transit"` | `"cycling"`, default `"automobile"`** — this is different spelling from the CLI's `--transport auto|walk|transit`; if porting a CLI example, `auto`→`automobile`, `walk`→`walking`, and `cycling` has no short CLI alias at all. `transit` gives ETA only, no turn-by-turn steps.) · `straight_line_only` (bool — when true, needs `lat1`/`lng1`/`lat2`/`lng2` instead of origin/destination) · `lat1`, `lng1`, `lat2`, `lng2` (numbers — plain negative JSON numbers work fine here, unlike the CLI's shell-quoting issue) · `unit` (`"meters"` | `"kilometers"` default | `"miles"`, for `straight_line_only`)

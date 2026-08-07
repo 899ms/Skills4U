@@ -8,6 +8,7 @@ All domains support `--help`. Most leaf commands support `--json`. Examples belo
 
 - Help And Shell Pitfalls
 - Top Level
+- Management
 - Calendar
 - Reminders
 - Clock
@@ -72,6 +73,27 @@ Subcommands:
 - `messages`: Apple Messages management
 - `location`: Location and maps services
 - `shortcuts`: Apple Shortcuts discovery and execution
+- `status`: Orchard.app run/account/feature/permission status
+- `features`: List or toggle Orchard's feature switches
+- `doctor`: Local read-only environment diagnostics
+
+## Management
+
+```bash
+orchard status --json
+orchard features list --json
+orchard features enable maps --json
+orchard features disable maps --json
+orchard doctor
+```
+
+`status` reports whether Orchard.app is running plus app version, login/Pro state, per-feature switches, and macOS permission status. "Not running" is a normal outcome and still exits 0.
+
+`features enable|disable <feature>` takes one of: `reminders`, `calendar`, `music`, `weather`, `notes`, `mail`, `maps`, `messages`, `contacts`, `clock`, `shortcuts`. Enabling a Pro-tier feature without a Pro subscription is rejected server-side. Ask the user before changing their switches.
+
+`doctor` runs read-only checks (socket, `/usr/local/bin/orchard` symlink, Skill installs, Claude Desktop/Cursor MCP config entries, CLI vs app version) and exits 1 if any check fails.
+
+Neither `status` nor `doctor` launches the app. Every other domain command auto-launches Orchard.app when it isn't running (polls up to ~10s, retries once); set `ORCHARD_NO_AUTOLAUNCH=1` to fail fast instead.
 
 ## Calendar
 
@@ -79,6 +101,7 @@ Subcommands:
 orchard calendar info --type calendars --json
 orchard calendar info --type calendars --calendar-type birthday --json
 orchard calendar info --type events --from 2026-06-03T00:00:00+08:00 --to 2026-06-04T00:00:00+08:00 --json
+orchard calendar info --type events --from 2026-06-03T00:00:00+08:00 --to 2026-06-04T00:00:00+08:00 --calendar-ids "ID1,ID2" --json
 
 orchard calendar create \
   --title "Event title" \
@@ -87,6 +110,7 @@ orchard calendar create \
   --calendar-id CALENDAR_ID \
   --location "Office" \
   --notes "Agenda" \
+  --url "https://example.com/meeting" \
   --alarms 15,60 \
   --json
 
@@ -101,7 +125,7 @@ orchard calendar convert --date 2026-06-03T00:00:00+08:00 --calendar chinese --j
 
 Update extras: `--calendar-id` moves the event to another calendar; `--url ""` clears the URL; `--alarms ""` clears all alarms.
 
-`calendar info --calendar-type` filters `--type calendars` output: `event` (default) or `birthday`.
+`calendar info --calendar-type` filters `--type calendars` output: `event` (default) or `birthday`. `--calendar-ids` (comma-separated) filters `--type events` to specific calendars.
 
 Calendar convert targets: `gregorian`, `buddhist`, `chinese`, `hebrew`, `islamic`, `islamicCivil`, `indian`, `japanese`, `persian`, `coptic`, `ethiopicAmeteMihret`, `ethiopicAmeteAlem`, `iso8601`.
 
@@ -111,6 +135,7 @@ Calendar convert targets: `gregorian`, `buddhist`, `chinese`, `hebrew`, `islamic
 orchard reminder info --type lists --json
 orchard reminder info --type reminders --status incomplete --json
 orchard reminder info --type reminders --list-id LIST_ID --status all --json
+orchard reminder info --type reminders --status incomplete --due-from 2026-06-01T00:00:00+08:00 --due-to 2026-06-08T00:00:00+08:00 --json
 
 orchard reminder create --title "Task" --list-id LIST_ID --due-date 2026-06-03T18:00:00+08:00 --priority 5 --notes "Context" --json
 orchard reminder create --title "Silent task" --due-date 2026-06-03T18:00:00+08:00 --enable-alarm false --json
@@ -125,7 +150,7 @@ orchard reminder list-update --list-id LIST_ID --name "New name" --color "#22C55
 orchard reminder list-delete --list-id LIST_ID --json
 ```
 
-Status values: `all`, `incomplete`, `completed`.
+Status values: `all`, `incomplete`, `completed`. `--due-from`/`--due-to` (ISO 8601) filter `--type reminders` by due-date range.
 
 Priority is 0-9 and lower is more urgent: 0=none, 1=high, 5=medium, 9=low.
 
@@ -151,6 +176,7 @@ Utility actions: `list_timezones`, `difference`.
 
 ```bash
 orchard mail accounts --json
+orchard mail accounts --include-mailboxes false --json
 orchard mail refresh --json
 orchard mail refresh --account "Account name" --json
 
@@ -171,7 +197,10 @@ orchard mail mark --message-ids "ID1,ID2" --status unread --json
 orchard mail mark --mailbox INBOX --account "Account name" --status read --json
 
 orchard mail scheduled list --json
+orchard mail scheduled list --status pending --json
 orchard mail scheduled cancel --id SCHEDULED_EMAIL_ID --json
+orchard mail scheduled cancel --ids "ID1,ID2" --json
+orchard mail scheduled cancel --status cancelled --json
 ```
 
 Read types: `search`, `content`, `unread`, `list`, `thread`.
@@ -183,6 +212,8 @@ Mail list records include fields such as `id`, `sender`, `sender_address`, `subj
 If returned messages equal the requested `--limit`, page with `--offset` or report that the time-window scan may be truncated. Do not claim complete coverage unless the fetched set extends older than the window start.
 
 `mail mark` accepts either `--message-ids` for specific emails, or `--mailbox`/`--account` (with `--message-ids` omitted) to batch-mark a whole mailbox. Confirm intent before whole-mailbox marking.
+
+`mail scheduled list --status` filters by `pending`, `sent`, `cancelled`, or `all` (default). `mail scheduled cancel` requires exactly one of `--id` (single), `--ids` (comma-separated batch), or `--status` (deletes every scheduled email with that status — confirm with the user first); `--ids` and `--status` cannot combine, and the server rejects filterless calls.
 
 ## Contacts
 
@@ -273,7 +304,10 @@ orchard messages send --contact-name "Alice Chen" --text "Message" --json
 orchard messages send --to "chat123456789" --group-name "Family" --text "Message" --json
 
 orchard messages scheduled list --json
+orchard messages scheduled list --status pending --json
 orchard messages scheduled cancel --id SCHEDULED_MESSAGE_ID --json
+orchard messages scheduled cancel --ids "ID1,ID2" --json
+orchard messages scheduled cancel --status cancelled --json
 ```
 
 Read types: `chats`, `messages`.
@@ -284,14 +318,17 @@ Read types: `chats`, `messages`.
 
 Confirm before sending unless the user has provided exact text and requested send.
 
+`messages scheduled list --status` and `messages scheduled cancel` follow the same rules as their mail counterparts: cancel requires exactly one of `--id`/`--ids`/`--status`, `--ids` and `--status` cannot combine, and filterless calls are rejected.
+
 ## Location
 
 ```bash
 orchard location search --query "coffee near Jinan" --type search --json
-orchard location search --query "coffee" --type nearby --lat 36.6521 --lon 117.1201 --json
+orchard location search --query "coffee" --type nearby --lat 36.6521 --lon 117.1201 --radius 2000 --limit 20 --json
 orchard location search --query "Jinan" --type autocomplete --json
 
 orchard location geocode --direction address_to_coords --address "Jinan, China" --json
+orchard location geocode --direction address_to_coords --address "Springfield" --region US --json
 orchard location geocode --direction coords_to_address --lat 36.6521 --lon 117.1201 --json
 
 orchard location route --origin "Jinan Station" --destination "Jinan West Station" --transport transit --json
@@ -302,7 +339,9 @@ orchard location current --json
 
 Location search types: `search`, `nearby`, `autocomplete`.
 
-Geocode directions: `address_to_coords`, `coords_to_address`.
+Geocode directions: `address_to_coords`, `coords_to_address`. `--region` (e.g. `US`, `CN`) biases `address_to_coords` results.
+
+`location search --radius` is in meters (default 10000 for search, 5000 for nearby); `--limit` defaults to 10 (max 50 search / 30 nearby / 10 autocomplete).
 
 Route transports: `auto`, `walk`, `transit`.
 
