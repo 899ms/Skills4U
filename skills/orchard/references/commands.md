@@ -1,6 +1,6 @@
 # Orchard Command Reference
 
-Orchard version inspected: `0.6.0`.
+Orchard version inspected: `0.6.2`.
 
 All domains support `--help`. Most leaf commands support `--json`. Examples below use `orchard` as shorthand; when `SKILL.md` has resolved `ORCHARD_BIN`, call `"$ORCHARD_BIN"` instead.
 
@@ -126,6 +126,8 @@ orchard reminder list-delete --list-id LIST_ID --json
 ```
 
 Status values: `all`, `incomplete`, `completed`.
+
+Priority is 0-9 and lower is more urgent: 0=none, 1=high, 5=medium, 9=low.
 
 `--enable-alarm true|false` controls the due-date notification (default true). On update, omit it to leave the existing alarm untouched; passing it without a new `--due-date` toggles the alarm on the current due date. `reminder update --list-id` moves the reminder to another list.
 
@@ -254,7 +256,7 @@ orchard weather get --location Jinan --granularity daily --start-date 2026-06-03
 orchard weather get --lat 36.6521 --lon 117.1201 --granularity hourly --start-date 2026-06-03T00:00:00+08:00 --end-date 2026-06-03T23:59:59+08:00 --json
 ```
 
-Granularity values: `daily`, `hourly`. There is no `--days` flag in 0.6.0.
+Granularity values: `daily`, `hourly`. There is no `--days` flag.
 
 Weather records include condition, symbol, temperature high/low, precipitation chance/amount, UV index, wind, sun, moon phase, and location.
 
@@ -276,7 +278,7 @@ orchard messages scheduled cancel --id SCHEDULED_MESSAGE_ID --json
 
 Read types: `chats`, `messages`.
 
-In 0.6.0, `messages read --type chats` requires `--query` in practice even though help marks it optional.
+`messages read --type chats` requires `--query` in practice even though help marks it optional.
 
 `messages send` takes `--to` (phone/email/chat identifier) or `--contact-name` (looked up in existing chats); one of the two is required. Group chats (`--to chat...`) also require `--group-name`.
 

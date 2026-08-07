@@ -3,11 +3,13 @@ set -u
 
 usage() {
   cat >&2 <<'USAGE'
-Usage: resolve-orchard.sh [--bin|--route|--app|--version|--info|--shell]
+Usage: resolve-orchard.sh [--bin|--route|--app|--version|--info|--shell|--mcp-exec]
 
 Resolves the Orchard CLI in this order:
   1. global `orchard` from PATH
   2. bundled `orchard-cli` inside Orchard.app
+
+--mcp-exec execs the resolved CLI as an MCP stdio server (`orchard mcp`).
 USAGE
 }
 
@@ -84,6 +86,13 @@ case "${1:---info}" in
     printf 'ORCHARD_BIN=%s\n' "$(shell_quote "$ORCHARD_BIN")"
     printf 'ORCHARD_APP_PATH=%s\n' "$(shell_quote "$ORCHARD_APP_PATH")"
     printf 'ORCHARD_VERSION=%s\n' "$(shell_quote "$ORCHARD_VERSION")"
+    ;;
+  --mcp-exec)
+    if [ -z "$ORCHARD_BIN" ]; then
+      echo "Orchard CLI not found. Install and launch Orchard.app first." >&2
+      exit 1
+    fi
+    exec "$ORCHARD_BIN" mcp
     ;;
   -h|--help)
     usage

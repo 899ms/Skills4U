@@ -1,0 +1,309 @@
+# Orchard MCP Tools Reference
+
+**Audience: the MCP channel only** — sessions with **no Bash/shell tool** (e.g. Claude Cowork's execution sandbox, an isolated Linux VM with no access to this Mac, bridged to the running Orchard.app through Claude Desktop's stdio MCP connection). If you have a Bash tool, stop — go use the CLI instead (`SKILL.md` → `references/commands.md`). The CLI is cheaper and self-documenting; this file exists only for the case where the CLI is physically unreachable.
+
+This file is written to be **self-contained**, because this channel has none of the CLI's safety nets: no `--help`, no `orchard <domain> <command> --help` discovery, no `CLIJSONOutputNormalizer` unwrapping. Everything needed to call these 52 tools correctly should be on this page — real tool names, required parameters, and the parameter-shape gotchas that the inputSchema's own `description` text doesn't always make obvious.
+
+**`SKILL.md`'s Core Rules still apply in full** — ISO 8601 discipline, search-before-create dedup, confirm before destructive/send operations, pagination honesty, never dumping huge bodies, shortcuts `confirm`+`reason`. Those are properties of the *tools*, not the transport, so this file does not repeat them. It only adds parameter-shape detail.
+
+## Mechanics specific to this channel
+
+- **No JSON envelope.** The CLI's `--json` wraps output as `{"output": ..., "success": true, ...}` — that wrapper exists only inside `orchard-cli`, never on this channel. An MCP tool call returns a content array plus a separate `isError` boolean. When a tool emits a human-readable prefix followed by JSON (e.g. `Found 2 events:` + a JSON array), they arrive as **separate text blocks: the last block is clean, parseable JSON** — parse that one directly, no prose-stripping needed. Results with no embedded JSON arrive as a single plain-text block unchanged. Don't go looking for an `output`/`success` wrapper — it doesn't exist here.
+- **Tool name prefix varies by host and is not part of the tool's identity.** The 52 names in this file (`calendar_info`, `mail_send`, ...) are the real, stable names the Orchard MCP server registers. Your own tool list exposes them with a host-added prefix — e.g. `mcp__orchard__calendar_info` for a manually configured server, or `mcp__plugin_orchard_orchard__calendar_info` when Orchard ships as a plugin (the likely Cowork case). **Never hardcode the middle segment.** Find the callable name by matching whatever in your tool list ends in `__<tool_name>` against the names documented here.
+- **Free vs Pro gating is enforced server-side, identically to the CLI.** Free tier: `calendar_*`, `reminder_*`, `clock_*`. Everything else — `mail_*`, `notes_*`, `messages_*`, `music_*`, `weather_get`, `contacts_*`, `location_*`, `shortcuts_*` — requires an active Pro subscription on the signed-in Orchard account. A gating error on one of those tools is expected behavior for a Free account, not a bug in your call: tell the user, don't retry with different arguments.
+- **Orchard.app auto-launch is automatic.** If Orchard.app isn't running, the `orchard mcp` bridge process launches it (`open -b tech.5km.orchard`) and polls for up to ~10s before retrying your call once, on its own. You don't need to detect or retry this yourself. If the call still fails after that, tell the user to open Orchard.app manually, check for a pending macOS permission prompt, then ask you to retry.
+- **Values are real JSON, not shell strings.** Arrays are JSON arrays (`"to": ["a@example.com"]`, never `"a@example.com,b@example.com"`), booleans are JSON `true`/`false` (never the strings `"true"` or `"read"`), and numbers are JSON numbers, including negatives (`"lng1": -122.4194`). The CLI's `--flag=-value` shell-quoting workaround for negative numbers does not apply here — this is a JSON payload, not argv, so plain negative numbers just work.
+
+## Domain / tier index
+
+| Domain | Tier | Tools |
+|---|---|---|
+| calendar | Free | `calendar_info`, `calendar_event_create`, `calendar_event_update`, `calendar_event_delete`, `calendar_convert` |
+| reminder | Free | `reminder_info`, `reminder_create`, `reminder_update`, `reminder_delete`, `reminder_list_create`, `reminder_list_update`, `reminder_list_delete` |
+| mail | Pro | `mail_accounts`, `mail_read`, `mail_send`, `mail_mark`, `mail_refresh`, `mail_scheduled_list`, `mail_scheduled_cancel` |
+| notes | Pro | `notes_search`, `notes_create`, `notes_update`, `notes_get_content`, `notes_open` |
+| messages | Pro | `messages_read`, `messages_send`, `messages_scheduled_list`, `messages_scheduled_cancel` |
+| music | Pro | `music_control`, `music_play`, `music_info`, `music_search`, `music_playlist_create`, `music_playlist_add`, `music_playlist_remove`, `music_playlist_delete` |
+| weather | Pro | `weather_get` |
+| contacts | Pro | `contacts_search`, `contacts_get_details`, `contacts_create`, `contacts_update`, `contacts_delete` |
+| clock | Free | `clock_time`, `clock_util` |
+| location | Pro | `location_search`, `location_geocode`, `location_route`, `location_current` |
+| shortcuts | Pro | `shortcuts_list`, `shortcuts_folders`, `shortcuts_open`, `shortcuts_run` |
+
+52 tools total. "Required" below always means the tool's actual JSON-Schema `required` array (verified against source, not the CLI's `--help` text, which is sometimes stricter or looser than the underlying tool).
+
+---
+
+## calendar (Free)
+
+Typical flow: `calendar_info` (type=calendars) to get a `calendar_id` → `calendar_event_create` → `calendar_info` (type=events) to get an `event_id` before update/delete.
+
+### `calendar_info` — list calendars or events
+- **Required:** `type` (`"calendars"` | `"events"`)
+- **Optional:** `calendar_type` (`"event"` | `"birthday"`, only used when `type=calendars`, default `"event"`) · `start_date`, `end_date` (ISO 8601 — required in practice when `type=events`, just not schema-enforced) · `calendar_ids` (array of calendar-ID strings, filters `type=events`)
+- **Gotcha:** `calendar_ids` filtering has no CLI equivalent — it's only reachable on this channel.
+
+### `calendar_event_create` — create an event
+- **Required:** `title`, `start_date`, `end_date` (ISO 8601, e.g. `"2026-06-03T15:00:00+08:00"`; include a timezone offset for local time)
+- **Optional:** `calendar_id` (default calendar if omitted — get IDs from `calendar_info`) · `location`, `notes`, `url` (strings) · `all_day` (bool, default false) · `alarms` (**array of integers**, minutes before start, e.g. `[15, 60, 1440]` — not a comma string)
+- **Gotcha:** don't default to whatever calendar is "current" without listing calendars first, unless the user explicitly doesn't care which calendar.
+
+### `calendar_event_update` — update an event
+- **Required:** `event_id`
+- **Optional:** `title`, `start_date`, `end_date`, `calendar_id` (moves the event), `location`, `notes` · `url` (pass `""` to clear) · `alarms` (pass `[]` to clear all, or a new array to replace)
+- **Gotcha:** only fields you provide change; read the event first if you need to preserve the rest.
+
+### `calendar_event_delete` — delete an event
+- **Required:** `event_id`
+- **Gotcha:** destructive. Confirm with the user unless they explicitly named this exact event.
+
+### `calendar_convert` — convert a date to another calendar system
+- **Required:** `date` (ISO 8601), `calendar_identifier`
+- `calendar_identifier` enum: `gregorian`, `buddhist`, `chinese`, `hebrew`, `islamic`, `islamicCivil`, `indian`, `japanese`, `persian`, `coptic`, `ethiopicAmeteMihret`, `ethiopicAmeteAlem`, `iso8601`
+
+---
+
+## reminder (Free)
+
+Typical flow: `reminder_info` (type=lists) to get a `list_id` → `reminder_create` → `reminder_info` (type=reminders) to get a `reminder_id` before update/delete.
+
+### `reminder_info` — list reminder lists or reminders
+- **Required:** `type` (`"lists"` | `"reminders"`)
+- **Optional:** `list_id` (filter, `type=reminders`) · `completed` (**boolean**, filter — omit for all, `true` for completed only, `false` for incomplete only; this is not a `"status"` string enum) · `due_from`, `due_to` (ISO 8601, filter due-date range)
+- **Gotcha:** `due_from`/`due_to` range filtering has no CLI equivalent — MCP-only.
+
+### `reminder_create` — create a reminder
+- **Required:** `title`
+- **Optional:** `list_id` (default list if omitted — get IDs from `reminder_info`) · `due_date` (ISO 8601 — this is when the notification fires, not just a label) · `notes` · `priority` (integer) · `enable_alarm` (bool, default true — whether a notification fires at `due_date`)
+- **Gotcha — priority direction:** `0` = none, `1` = high, `5` = medium, `9` = low. **Lower numbers are more urgent** (except `0`, which means no priority set). Do not assume higher = more important.
+
+### `reminder_update` — update a reminder
+- **Required:** `reminder_id`
+- **Optional:** same fields as create, plus `completed` (bool, marks done/undone) · `list_id` (moves to another list)
+- `due_date`: pass `""` to clear
+- `enable_alarm`: omit to leave the existing alarm setting untouched; passing it without a new `due_date` toggles the alarm on the *current* due date
+
+### `reminder_delete` — delete a reminder
+- **Required:** `reminder_id`
+
+### `reminder_list_create` — create a reminder list
+- **Required:** `title` — **note the field is `title`, not `name`**, even though this creates a "list"
+- **Optional:** `color` (hex e.g. `"#3B82F6"`, or a color name)
+
+### `reminder_list_update` — rename/recolor a list
+- **Required:** `list_id`
+- **Optional:** `title`, `color`
+
+### `reminder_list_delete` — delete a list
+- **Required:** `list_id`
+- **Gotcha:** deletes every reminder in that list too. Confirm before use.
+
+---
+
+## mail (Pro)
+
+Typical flow: `mail_accounts` to find a valid `from_account` → `mail_read` (type=search or list) to find a `message_id` → `mail_read` (type=content) / `mail_mark` / etc.
+
+### `mail_accounts` — list configured mail accounts
+- **Optional:** `include_mailboxes` (bool, default true)
+
+### `mail_read` — search / read / list mail
+- **Required:** `type` (`"search"` | `"content"` | `"unread"` | `"list"` | `"thread"`)
+- **Optional:** `keyword` (search text — **not `query`**, that's the CLI flag name only; required in practice for `type=search`) · `message_id` (required in practice for `type=content`/`thread`) · `account_name`, `mailbox_name` (**not `account`/`mailbox`** — those are CLI-only names) · `limit` (default 10 for search/unread, 20 for list) · `offset` (pagination, default 0) · `date_from`, `date_to` (ISO 8601 **with a timezone offset, not `Z`**, for correct local day boundaries; date-only like `"2024-12-01"` also works) · `max_body_length` (default 10000 for content, 1200 for thread; `0` = unlimited)
+- **Gotcha:** if the returned count equals `limit`, page with `offset` or explicitly tell the user the scan may be truncated — never imply full coverage otherwise.
+
+### `mail_send` — send (or schedule) an email
+- **Required:** `to` (**array of strings**, not a comma-separated string), `subject`, `content` (plain text body)
+- **Optional:** `cc` (array of strings) · `from_account` (email address or account display name, e.g. `"iCloud"` — check `mail_accounts` if unsure) · `scheduled_time` (ISO 8601, future — omit to send immediately)
+- **Gotcha:** confirm with the user before sending unless they gave exact text and explicitly asked you to send.
+
+### `mail_mark` — mark read/unread
+- **Required:** `read_status` — **boolean** `true`/`false`, not the strings `"read"`/`"unread"` that the CLI's `--status` flag takes (the CLI does that string→bool conversion itself before it ever reaches this tool)
+- **Optional (single):** `message_id`
+- **Optional (batch):** `message_ids` (array), or `mailbox_name`/`account_name` with no `message_id`/`message_ids` to mark an entire mailbox
+- **Gotcha:** confirm before whole-mailbox marking — it's easy to trigger by accident by omitting `message_id`.
+
+### `mail_refresh` — sync mailboxes
+- **Optional:** `account` (all accounts if omitted)
+
+### `mail_scheduled_list` — list scheduled emails
+- **Optional:** `status` (`"pending"` | `"sent"` | `"cancelled"` | `"all"`, default all)
+
+### `mail_scheduled_cancel` — cancel/delete scheduled emails
+- **Optional:** `email_id` (single) · `email_ids` (array, **batch** — MCP-only, the CLI only supports one `--id` at a time) · `status` (deletes **every** email with this status — MCP-only bulk op, no CLI equivalent)
+- **Gotcha:** no field is schema-required, but you must supply at least one of the three. Treat `status`-wide delete as destructive; confirm with the user before using it.
+
+---
+
+## notes (Pro)
+
+Typical flow: `notes_search` before `notes_create` (avoid duplicates) → `notes_get_content` / `notes_update`.
+
+### `notes_create` — create a note
+- **Required:** `content` (HTML — wrap the title in `<h1>`, use `<p>`/`<br/>`/`<a href="...">`, not Markdown)
+- **Optional:** `title` (else the first line of `content` is used) · `folder` (must already exist in Apple Notes, or the call errors; this tool never creates folders; omit for the default folder)
+- **Gotcha:** cannot attach files (PDF/image/video) — attachments are manual-only, in the Notes app itself.
+
+### `notes_update` — replace a note's content
+- **Required:** `note_id`, `content` (HTML, replaces the whole body)
+- **Gotcha:** fails outright if the note has existing attachments, to avoid destroying them. Use `notes_open` and tell the user to edit manually in that case.
+
+### `notes_search` — search or list notes
+- **Optional:** `query` (omit or empty = list all notes) · `limit` (default 50)
+
+### `notes_get_content` — read a note
+- **Required:** `note_id`
+- **Optional:** `format` (`"html"` | `"plain"`, default `"html"`)
+
+### `notes_open` — open a note in the Notes app UI
+- **Required:** `note_id`
+- **Gotcha:** only useful when the user is at the Mac to see it open — in a headless session this is really "tell the user to open note X themselves."
+
+---
+
+## messages (Pro)
+
+Typical flow: `messages_read` (type=chats) to get a `chat_identifier` → `messages_read` (type=messages) / `messages_send`.
+
+### `messages_read` — search chats or messages
+- **Required:** `type` (`"chats"` | `"messages"`)
+- **Optional:** `search_term` (for `chats`: contact/phone/group name; for `messages`: text content) · `chat_identifier` (scopes `type=messages` to one chat) · `limit` (default 10 for chats, 20 for messages)
+- **Gotcha:** `search_term` is schema-optional for `type=chats`, but in practice an empty/omitted value tends to return nothing useful — always pass a real search term when looking up chats.
+
+### `messages_send` — send (or schedule) a message
+- **Required:** `text`
+- **Optional:** `chat_identifier` (phone/email) or `contact_name` — provide one; needed unless the other is given · `service_name` (`"iMessage"` | `"SMS"`, default iMessage; SMS requires Text Message Forwarding enabled on the paired iPhone) · `group_name` (required for group chats, when `chat_identifier` is a `chat...` group ID) · `scheduled_time` (ISO 8601, future)
+- **Gotcha:** confirm with the user before sending unless they gave exact text and explicitly asked you to send.
+
+### `messages_scheduled_list` — list scheduled messages
+- **Optional:** `status` (default all)
+
+### `messages_scheduled_cancel` — cancel/delete scheduled messages
+- **Optional:** `message_id` (single) · `message_ids` (array, batch — MCP-only) · `status` (bulk delete — MCP-only)
+- **Gotcha:** same caution as `mail_scheduled_cancel` — confirm before status-wide delete.
+
+---
+
+## music (Pro)
+
+### `music_control` — playback control
+- **Required:** `action` (`"play"` | `"pause"` | `"stop"` | `"next"` | `"previous"` | `"volume"` | `"shuffle"` | `"repeat"`)
+- **Optional:** `value` — **always a string**, even for volume: `"0"`–`"100"` for volume, `"on"`/`"off"` for shuffle, `"off"`/`"one"`/`"all"` for repeat
+
+### `music_play` — play from the local library
+- **Required:** `type` (`"song"` | `"album"` | `"playlist"`), `name`
+- **Optional:** `artist` (helps disambiguate)
+- **Gotcha:** there is **no catalog-ID parameter** — matching is by `name` (+ `artist`) against your local library only. If the underlying app isn't found, `music_info`/`music_search` are the suggested next step; don't retry the same call blindly.
+
+### `music_info` — playback status / library stats
+- **Optional:** `type` (`"playback"` default | `"library"` | `"albums"` | `"playlists"`) · `include_queue` (bool, only affects `type=playback`, shows next few tracks)
+- **Gotcha:** `library`/`albums`/`playlists` require macOS 14+.
+
+### `music_search` — search the Apple Music catalog
+- **Required:** `query`
+- **Optional:** `type` (`"songs"` | `"albums"` | `"artists"` | `"playlists"` | `"all"`, default all) · `limit` (default 10 per type)
+- **Gotcha:** returns catalog IDs, but items must be added to the library via the Music app before `music_play` can play them — search results are not directly playable.
+
+### `music_playlist_create` — create a playlist
+- **Required:** `name`
+- **Optional:** `songs` (comma-separated exact song names from the local library, to seed the playlist)
+- **Gotcha:** there is **no `description` parameter** on this tool — it's silently ignored if sent.
+
+### `music_playlist_add` — add songs to a playlist
+- **Required:** `name`, `songs` (comma-separated exact names)
+- **Gotcha:** works only on user-created playlists, not subscribed Apple Music playlists.
+
+### `music_playlist_remove` — remove songs from a playlist
+- **Required:** `name`, `songs`
+- **Gotcha:** destructive; same user-playlist-only restriction as `music_playlist_add`.
+
+### `music_playlist_delete` — delete a playlist
+- **Required:** `name`
+- **Gotcha:** destructive. Confirm before use; only works on user-created playlists.
+
+---
+
+## weather (Pro)
+
+### `weather_get` — current/forecast/historical weather
+- **Optional:** `location` (name, or `"lat,lon"` string — omit for device's current location) · `granularity` (`"daily"` default | `"hourly"`) · `start_date`, `end_date` (ISO 8601)
+- Daily: historical from 2021-08-01, forecast up to 10 days ahead. Hourly: forecast only, up to 7 days ahead, and `start_date`/`end_date` **must include a time component**, not date-only.
+- **Gotcha:** no day-count shortcut parameter (no `days`) — always pass explicit `start_date`/`end_date`.
+
+---
+
+## contacts (Pro)
+
+Typical flow: `contacts_search` before `contacts_create` (avoid duplicates).
+
+### `contacts_search` — search contacts
+- **Required:** `query`
+- **Optional:** `limit` (default 20, max ~100)
+
+### `contacts_get_details` — get one contact
+- **Required:** `contact_id` (from `contacts_search`)
+
+### `contacts_create` — create a contact
+- **Nothing is schema-required** — in practice supply at least `given_name` and/or `family_name`/`organization_name`.
+- **Optional:** `given_name`, `family_name`, `organization_name`, `job_title`, `note` · `phone_numbers`: **array of `{"label": ..., "number": ...}` objects** (not the CLI's `"label:number"` string shorthand) · `email_addresses`: **array of `{"label": ..., "email": ...}` objects**
+- Example: `"phone_numbers": [{"label": "mobile", "number": "+15551234567"}]`
+
+### `contacts_update` — update a contact
+- **Required:** `contact_id`
+- Same optional fields as create. **`phone_numbers`/`email_addresses` fully replace the existing list** — they don't merge. Fetch the current contact first if you need to preserve existing entries.
+
+### `contacts_delete` — delete a contact
+- **Required:** `contact_id`
+- **Gotcha:** destructive.
+
+---
+
+## clock (Free)
+
+### `clock_time` — current time or timezone conversion
+- **Optional:** `timezone` (system timezone if omitted; source timezone when converting) · `to_timezone` (if provided, switches to conversion mode and makes `time` required) · `time` (ISO 8601, required when `to_timezone` is set) · `calendar_identifier` (only applies when `to_timezone` is **not** set)
+
+### `clock_util` — list timezones or compute a difference
+- **Required:** `action` (`"list_timezones"` | `"difference"`)
+- **Optional:** `region` (filter for `list_timezones`, e.g. `"Asia"`) · `time1`, `time2` (ISO 8601, required in practice for `difference`)
+
+---
+
+## location (Pro)
+
+Tool prefix is `location_*` for every tool in this CLI domain (`orchard location ...`).
+
+### `location_search` — search places
+- **Required:** `type` (`"search"` | `"nearby"` | `"autocomplete"`), `query` (search term, or a category like `"restaurant"` for nearby)
+- **Optional:** `latitude`, `longitude` (required for `nearby`; optional bias hint otherwise) · `radius` (meters, default 10000 for search / 5000 for nearby — **MCP-only, no CLI flag**) · `limit` (default 10, max 50/search, 30/nearby, 10/autocomplete — **MCP-only, no CLI flag**)
+
+### `location_geocode` — address ↔ coordinates
+- **Required:** `direction` (`"address_to_coords"` | `"coords_to_address"`)
+- **Optional:** `address` (required in practice for `address_to_coords`) · `latitude`, `longitude` (required in practice for `coords_to_address`) · `region` (country/region bias code, e.g. `"US"`, `"CN"` — **MCP-only, no CLI flag**)
+
+### `location_route` — route or straight-line distance
+- **Optional:** `origin`, `destination` (address or `"lat,lon"` string — required unless `straight_line_only`) · `transport_type` (**enum `"automobile"` | `"walking"` | `"transit"` | `"cycling"`, default `"automobile"`** — this is different spelling from the CLI's `--transport auto|walk|transit`; if porting a CLI example, `auto`→`automobile`, `walk`→`walking`, and `cycling` has no short CLI alias at all. `transit` gives ETA only, no turn-by-turn steps.) · `straight_line_only` (bool — when true, needs `lat1`/`lng1`/`lat2`/`lng2` instead of origin/destination) · `lat1`, `lng1`, `lat2`, `lng2` (numbers — plain negative JSON numbers work fine here, unlike the CLI's shell-quoting issue) · `unit` (`"meters"` | `"kilometers"` default | `"miles"`, for `straight_line_only`)
+
+### `location_current` — device location
+- **Optional:** `include_address` (bool, default true — reverse-geocodes the coordinate)
+- **Gotcha:** requires location permission granted to Orchard.app; errors if not yet granted.
+
+---
+
+## shortcuts (Pro)
+
+Typical flow: `shortcuts_list` (or `shortcuts_open`) before `shortcuts_run` — never run blind.
+
+### `shortcuts_list` — list local shortcuts
+- **Optional:** `folder_name`, `query` (filters) · `include_details` (bool, default true — folder/accepts_input/action_count metadata)
+
+### `shortcuts_folders` — list custom Shortcuts folders
+- No parameters.
+
+### `shortcuts_open` — open a shortcut in the editor
+- **Optional:** `name` or `id` — provide one.
+
+### `shortcuts_run` — run a shortcut
+- **Required:** `confirm` (bool, must be `true`), `reason` (string, short explanation of the user's goal) — **both required because this can run arbitrary user-defined automation**
+- **Optional:** `name` or `id` (provide one) · `input` (text) or `input_path` (local file path) · `output_path`, `output_type` (force CLI-backend execution when set) · `execution_mode` (`"auto"` default | `"applescript"` | `"cli"`) · `timeout_seconds` (default 120, hard cap 270 — the socket transport enforces a 5-minute read timeout, so anything longer than 270s would time out the client while the shortcut kept running)
+- **Gotcha:** always `shortcuts_list`/`shortcuts_open` first, and get explicit user confirmation unless they named this exact shortcut to run.
