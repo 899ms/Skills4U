@@ -121,9 +121,25 @@ orchard calendar update --event-id EVENT_ID --url "https://example.com/meeting" 
 orchard calendar update --event-id EVENT_ID --url "" --alarms "" --json
 orchard calendar delete --event-id EVENT_ID --json
 orchard calendar convert --date 2026-06-03T00:00:00+08:00 --calendar chinese --json
+
+# Recurring events (create and update accept the same --repeat flags)
+orchard calendar create --title "Standup" --start 2026-06-01T10:00:00+08:00 --end 2026-06-01T10:30:00+08:00 \
+  --repeat weekly --repeat-interval 2 --repeat-days-of-week mon,fri --repeat-count 10 --json
+orchard calendar create --title "Review" --start 2026-06-01T14:00:00+08:00 --end 2026-06-01T15:00:00+08:00 \
+  --repeat monthly --repeat-days-of-week mon --repeat-set-positions 1 --repeat-until 2027-06-30 --json
+orchard calendar create --title "Payday" --start 2026-06-30T09:00:00+08:00 --end 2026-06-30T09:15:00+08:00 \
+  --repeat monthly --repeat-days-of-month -1 --json
+orchard calendar update --event-id EVENT_ID --repeat none --json
+orchard calendar update --event-id EVENT_ID --occurrence-date 2026-06-15 --start 2026-06-15T11:00:00+08:00 --end 2026-06-15T11:30:00+08:00 --span this-event --json
+orchard calendar delete --event-id EVENT_ID --occurrence-date 2026-06-15 --json
+orchard calendar delete --event-id EVENT_ID --span future-events --json
 ```
 
 Update extras: `--calendar-id` moves the event to another calendar; `--url ""` clears the URL; `--alarms ""` clears all alarms.
+
+Repeat flags: `--repeat daily|weekly|monthly|yearly` (update also accepts `none` to remove recurrence) · `--repeat-interval N` (every N periods, default 1) · `--repeat-days-of-week mon,fri` (weekly/monthly/yearly) · `--repeat-days-of-month 1,15,-1` (monthly only; negative counts from month end) · `--repeat-months 1-12`, `--repeat-weeks-of-year`, `--repeat-days-of-year` (yearly only) · `--repeat-set-positions 1|-1` (first/last; must combine with another repeat field) · end with `--repeat-until DATE` (inclusive; bare `YYYY-MM-DD` OK) or `--repeat-count N`, mutually exclusive.
+
+Recurring-event targeting: all occurrences share one event id. `--occurrence-date DATE` picks the occurrence (default: first); `--span this-event|future-events` controls reach. Delete defaults to `this-event`; update defaults to `this-event` unless the repeat rule changes, which auto-applies `future-events`.
 
 `calendar info --calendar-type` filters `--type calendars` output: `event` (default) or `birthday`. `--calendar-ids` (comma-separated) filters `--type events` to specific calendars.
 
@@ -145,6 +161,11 @@ orchard reminder update --reminder-id REMINDER_ID --list-id LIST_ID --json
 orchard reminder update --reminder-id REMINDER_ID --enable-alarm false --json
 orchard reminder delete --reminder-id REMINDER_ID --json
 
+# Recurring reminders: --repeat requires --due-date (or an existing due date on update)
+orchard reminder create --title "Drink water" --due-date 2026-06-03T09:00:00+08:00 --repeat daily --json
+orchard reminder create --title "Weekly report" --due-date 2026-06-05T17:00:00+08:00 --repeat weekly --repeat-days-of-week fri --repeat-count 12 --json
+orchard reminder update --reminder-id REMINDER_ID --repeat none --json
+
 orchard reminder list-create --name "Project" --color "#3B82F6" --json
 orchard reminder list-update --list-id LIST_ID --name "New name" --color "#22C55E" --json
 orchard reminder list-delete --list-id LIST_ID --json
@@ -155,6 +176,8 @@ Status values: `all`, `incomplete`, `completed`. `--due-from`/`--due-to` (ISO 86
 Priority is 0-9 and lower is more urgent: 0=none, 1=high, 5=medium, 9=low.
 
 `--enable-alarm true|false` controls the due-date notification (default true). On update, omit it to leave the existing alarm untouched; passing it without a new `--due-date` toggles the alarm on the current due date. `reminder update --list-id` moves the reminder to another list.
+
+Reminders accept the same `--repeat` flag family as calendar (see the Calendar section). Recurring reminders require a due date; clearing the due date (`--due-date ""`) also removes the recurrence.
 
 ## Clock
 

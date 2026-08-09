@@ -2,8 +2,8 @@
 name: orchard
 description: "Use the local Orchard app to interact with macOS Apple apps and services: Calendar, Reminders, Clock, Mail, Contacts, Notes, Music, Weather, Messages, Location/Maps, and Apple Shortcuts. Two execution paths reach the same running Orchard.app: the `orchard` CLI (default — use this if you have a Bash/shell tool, e.g. Claude Code, Codex CLI, Cursor) and a stdio MCP server, `orchard mcp`, exposed as prefixed MCP tools (fallback for sandboxes that cannot run the macOS CLI, e.g. Claude Cowork, bridged through Claude Desktop). Use when a task asks to read or manage local calendar events, reminders, Apple Mail, contacts, notes, iMessage/SMS, Apple Music playback/library, weather, current time/timezones, geocoding, routes, current location, or local Shortcuts."
 metadata:
-  version: "0.7.3"
-  updated: "2026-08-07"
+  version: "0.7.4"
+  updated: "2026-08-09"
   tested_with:
     orchard_app: "0.6.2 (17)"
     orchard_cli: "0.6.2"
@@ -116,6 +116,25 @@ Priority is `0`-`9`, but **lower is more urgent**: `0` = none, `1` = high, `5` =
 ```bash
 "$ORCHARD_BIN" reminder update --reminder-id REMINDER_ID --completed true --json
 ```
+
+Repeating events and reminders use the `--repeat` flag family (same rules as Calendar.app's Custom repeat sheet):
+
+```bash
+# Every 2 weeks on Mon and Fri, 10 occurrences
+"$ORCHARD_BIN" calendar create --title "Standup" --start 2026-06-01T10:00:00+08:00 --end 2026-06-01T10:30:00+08:00 \
+  --repeat weekly --repeat-interval 2 --repeat-days-of-week mon,fri --repeat-count 10 --json
+
+# First Monday of each month, until a date (inclusive)
+"$ORCHARD_BIN" calendar create --title "Review" --start 2026-06-01T14:00:00+08:00 --end 2026-06-01T15:00:00+08:00 \
+  --repeat monthly --repeat-days-of-week mon --repeat-set-positions 1 --repeat-until 2027-06-30 --json
+
+# Daily reminder — recurring reminders REQUIRE --due-date
+"$ORCHARD_BIN" reminder create --title "Drink water" --due-date 2026-06-01T09:00:00+08:00 --repeat daily --json
+```
+
+`--repeat` is `daily|weekly|monthly|yearly` (on update, `none` removes recurrence). Companions: `--repeat-interval N` · `--repeat-days-of-week mon,fri` · `--repeat-days-of-month 1,15,-1` (monthly; `-1` = last day) · `--repeat-months 1-12` / `--repeat-weeks-of-year` / `--repeat-days-of-year` (yearly) · `--repeat-set-positions 1` or `-1` (combine with another repeat field) · end with `--repeat-until DATE` or `--repeat-count N` (mutually exclusive).
+
+All occurrences of a recurring event share **one event id**. `calendar update`/`calendar delete` take `--occurrence-date DATE` to target a specific occurrence (without it, the first occurrence is used) and `--span this-event|future-events` to control reach — delete defaults to `this-event` (only that occurrence); update defaults to `this-event` unless the repeat rule itself changes, which applies to `future-events` automatically.
 
 ### Notes And Contacts
 

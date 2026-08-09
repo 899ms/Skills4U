@@ -44,21 +44,28 @@ Typical flow: `calendar_info` (type=calendars) to get a `calendar_id` → `calen
 
 ### `calendar_event_create` — create an event
 - **Required:** `title`, `start_date`, `end_date` (ISO 8601, e.g. `"2026-06-03T15:00:00+08:00"`; include a timezone offset for local time)
-- **Optional:** `calendar_id` (default calendar if omitted — get IDs from `calendar_info`) · `location`, `notes`, `url` (strings) · `all_day` (bool, default false) · `alarms` (**array of integers**, minutes before start, e.g. `[15, 60, 1440]` — not a comma string)
+- **Optional:** `calendar_id` (default calendar if omitted — get IDs from `calendar_info`) · `location`, `notes`, `url` (strings) · `all_day` (bool, default false) · `alarms` (**array of integers**, minutes before start, e.g. `[15, 60, 1440]` — not a comma string) · `recurrence` (**object**, see "Recurrence object" below)
 - **Gotcha:** don't default to whatever calendar is "current" without listing calendars first, unless the user explicitly doesn't care which calendar.
 
 ### `calendar_event_update` — update an event
 - **Required:** `event_id`
-- **Optional:** `title`, `start_date`, `end_date`, `calendar_id` (moves the event), `location`, `notes` · `url` (pass `""` to clear) · `alarms` (pass `[]` to clear all, or a new array to replace)
+- **Optional:** `title`, `start_date`, `end_date`, `calendar_id` (moves the event), `location`, `notes` · `url` (pass `""` to clear) · `alarms` (pass `[]` to clear all, or a new array to replace) · `recurrence` (object — replaces the existing rule; `{"frequency":"none"}` removes recurrence) · `span`, `occurrence_date` (recurring events, see below)
 - **Gotcha:** only fields you provide change; read the event first if you need to preserve the rest.
+- **Recurring events:** all occurrences share **one** `event_id`. Pass `occurrence_date` (ISO 8601) to target a specific occurrence — without it, the first occurrence is used. `span` is `"this_event"` | `"future_events"`; default is `this_event`, except when `recurrence` itself changes, which auto-applies `future_events` (rule changes affect the series).
 
 ### `calendar_event_delete` — delete an event
 - **Required:** `event_id`
-- **Gotcha:** destructive. Confirm with the user unless they explicitly named this exact event.
+- **Optional:** `span` (`"this_event"` | `"future_events"`, default `this_event`) · `occurrence_date` (ISO 8601 — which occurrence of a recurring series to target; default first)
+- **Gotcha:** destructive. Confirm with the user unless they explicitly named this exact event. For a recurring event, the default deletes only the targeted occurrence; `future_events` from the first occurrence deletes the entire series.
 
 ### `calendar_convert` — convert a date to another calendar system
 - **Required:** `date` (ISO 8601), `calendar_identifier`
 - `calendar_identifier` enum: `gregorian`, `buddhist`, `chinese`, `hebrew`, `islamic`, `islamicCivil`, `indian`, `japanese`, `persian`, `coptic`, `ethiopicAmeteMihret`, `ethiopicAmeteAlem`, `iso8601`
+
+### Recurrence object (shared by calendar and reminder create/update)
+- **Required:** `frequency` — `"daily"` | `"weekly"` | `"monthly"` | `"yearly"`; on update, `"none"` removes recurrence
+- **Optional:** `interval` (int, every N periods, default 1) · `days_of_week` (array of weekday names, e.g. `["monday","friday"]`; weekly/monthly/yearly only) · `days_of_month` (array of ints 1..31 or negative from month end, `-1` = last day; monthly only) · `months_of_year` (ints 1..12), `weeks_of_year`, `days_of_year` (yearly only) · `set_positions` (array of ints, `1` = first / `-1` = last; must combine with another field) · `end_date` (ISO 8601 or bare `YYYY-MM-DD`, inclusive) or `occurrence_count` (int) — mutually exclusive
+- Examples: every 2 weeks on Mon/Fri `{"frequency":"weekly","interval":2,"days_of_week":["monday","friday"]}` · first Monday of each month `{"frequency":"monthly","days_of_week":["monday"],"set_positions":[1]}` · last day of month `{"frequency":"monthly","days_of_month":[-1]}` · yearly until a date `{"frequency":"yearly","end_date":"2027-12-31"}`
 
 ---
 
@@ -72,13 +79,13 @@ Typical flow: `reminder_info` (type=lists) to get a `list_id` → `reminder_crea
 
 ### `reminder_create` — create a reminder
 - **Required:** `title`
-- **Optional:** `list_id` (default list if omitted — get IDs from `reminder_info`) · `due_date` (ISO 8601 — this is when the notification fires, not just a label) · `notes` · `priority` (integer) · `enable_alarm` (bool, default true — whether a notification fires at `due_date`)
+- **Optional:** `list_id` (default list if omitted — get IDs from `reminder_info`) · `due_date` (ISO 8601 — this is when the notification fires, not just a label) · `notes` · `priority` (integer) · `enable_alarm` (bool, default true — whether a notification fires at `due_date`) · `recurrence` (object, see "Recurrence object" in the calendar section — **requires `due_date`**)
 - **Gotcha — priority direction:** `0` = none, `1` = high, `5` = medium, `9` = low. **Lower numbers are more urgent** (except `0`, which means no priority set). Do not assume higher = more important.
 
 ### `reminder_update` — update a reminder
 - **Required:** `reminder_id`
-- **Optional:** same fields as create, plus `completed` (bool, marks done/undone) · `list_id` (moves to another list)
-- `due_date`: pass `""` to clear
+- **Optional:** same fields as create, plus `completed` (bool, marks done/undone) · `list_id` (moves to another list) · `recurrence` (object — replaces the existing rule; `{"frequency":"none"}` removes it; setting a rule requires a due date, existing or in the same call)
+- `due_date`: pass `""` to clear — clearing the due date also removes any recurrence
 - `enable_alarm`: omit to leave the existing alarm setting untouched; passing it without a new `due_date` toggles the alarm on the *current* due date
 
 ### `reminder_delete` — delete a reminder
