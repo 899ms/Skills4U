@@ -4,7 +4,7 @@
     {
       "id": 1,
       "name": "compress-single-png",
-      "prompt": "压缩这张图片：/Users/5km/Downloads/Tests/Zipic/icon_512x512.png\n\n请把压缩结果保存到 /tmp/zipic-eval-1/ 目录。",
+      "prompt": "压缩这张图片：/Users/5km/Downloads/Tests/Zipic/02-regression-cases/海棠反馈/Pic2.png\n\n请把压缩结果保存到 /tmp/zipic-eval-1/ 目录。",
       "expected_output": "AI runs detect.sh, takes the CLI route, invokes `zipic compress --json --output /tmp/zipic-eval-1/ ...` (with a sensible level), and reports per-file output_bytes / saved_pct from the parsed JSON.",
       "files": [],
       "expectations": [
@@ -12,21 +12,21 @@
         "The agent took the CLI route, calling `zipic compress` (NOT the URL Scheme `zipic://compress` / `open`).",
         "The CLI invocation included `--json` so the agent could parse structured output.",
         "The CLI invocation included `--output /tmp/zipic-eval-1/` (or set --location custom with that directory) so the original sample file was not overwritten.",
-        "A compressed PNG actually appeared in /tmp/zipic-eval-1/ and is smaller than the 28 KB input.",
+        "A compressed PNG actually appeared in /tmp/zipic-eval-1/ and is smaller than the input.",
         "The agent's final answer reported a saved percentage or output size from the JSON response — it did not just say 'done' without numbers."
       ]
     },
     {
       "id": 2,
       "name": "batch-jpg-to-webp",
-      "prompt": "把 /Users/5km/Downloads/Tests/Zipic/123 这个文件夹里的 JPG 都转成 WebP 格式，输出到 /tmp/zipic-eval-2/。",
+      "prompt": "把 /Users/5km/Downloads/Tests/Zipic/03-batch-conversion/123 这个文件夹里的 JPG 都转成 WebP 格式，输出到 /tmp/zipic-eval-2/。",
       "expected_output": "AI runs detect.sh, takes the CLI route, passes the FOLDER directly to `zipic compress` (not enumerating files), with `--format webp --output /tmp/zipic-eval-2/`. Three .webp files appear in the output dir.",
       "files": [],
       "expectations": [
         "The agent took the CLI route (`zipic compress`, not `zipic://compress`).",
         "The CLI invocation included `--format webp`.",
         "The CLI invocation included `--output /tmp/zipic-eval-2/`.",
-        "The agent passed the directory `/Users/5km/Downloads/Tests/Zipic/123` directly OR enumerated all 3 input JPGs — either is acceptable, but it must process all 3 source images.",
+        "The agent passed the directory `/Users/5km/Downloads/Tests/Zipic/03-batch-conversion/123` directly OR enumerated all 3 input JPGs — either is acceptable, but it must process all 3 source images.",
         "/tmp/zipic-eval-2/ contains 3 .webp output files (one per source IMG_*.JPG).",
         "The agent's final report mentioned all 3 files succeeded (or surfaced any per-file failures from the JSON response)."
       ]
@@ -34,15 +34,15 @@
     {
       "id": 3,
       "name": "large-png-resize-and-convert",
-      "prompt": "/Users/5km/Downloads/Tests/Zipic/raw-ok.png 这张图太大了，转成 WebP 压一下，最大宽度限制在 1920px。输出到 /tmp/zipic-eval-3/。",
-      "expected_output": "AI uses CLI with `--format webp --width 1920 --output /tmp/zipic-eval-3/`. The output WebP is materially smaller than the 15 MB input (typical: <1 MB).",
+      "prompt": "/Users/5km/Downloads/Tests/Zipic/02-regression-cases/Filemail.com files 20.05.2026 gqupuwlxiyduzir/Sikoqqinngisaannassooq 4K25pHLG MASTER v5,5 33Mbps-0001.png 这张图太大了，转成 WebP 压一下，最大宽度限制在 1920px。输出到 /tmp/zipic-eval-3/。",
+      "expected_output": "AI uses CLI with `--format webp --width 1920 --output /tmp/zipic-eval-3/`. The output WebP is materially smaller than the 35 MB input (typical: <1 MB).",
       "files": [],
       "expectations": [
         "The agent took the CLI route (`zipic compress`, not URL Scheme).",
         "The CLI invocation included `--format webp`.",
         "The CLI invocation included `--width 1920` (height defaulting to auto / aspect-kept is correct).",
         "The CLI invocation included `--output /tmp/zipic-eval-3/`.",
-        "A .webp file appeared in /tmp/zipic-eval-3/ and is at least 5x smaller than the 15 MB input.",
+        "A .webp file appeared in /tmp/zipic-eval-3/ and is at least 5x smaller than the 35 MB input.",
         "The agent reported the saved percentage or output size from the JSON response."
       ]
     },
